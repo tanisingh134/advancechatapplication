@@ -265,12 +265,26 @@
                 });
 
                 socketRef.current.on('file', (data) => {
+                    console.log('File received from server:', data);
                     if (!blockedUsers.includes(data.username)) {
-                        setMessages((prev) => [...prev, { ...data, type: 'file' }]);
+                        // Preserve the original file type and add the file to messages
+                        const fileMessage = { 
+                            ...data, 
+                            id: Date.now(),
+                            timestamp: data.timestamp || new Date().toLocaleTimeString(),
+                            seen: false
+                        };
+                        console.log('Adding file message to state:', fileMessage);
+                        setMessages((prev) => [...prev, fileMessage]);
                     }
                 });
 
                 socketRef.current.on('aiResponse', (response) => setAiResponse(response));
+
+                socketRef.current.on('error', (error) => {
+                    console.error('Server error:', error);
+                    alert(`Server error: ${error}`);
+                });
 
                 socketRef.current.on('offer', handleOffer);
                 socketRef.current.on('answer', handleAnswer);
@@ -428,24 +442,41 @@
             };
 
             const startRecording = async () => {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                const recorder = new MediaRecorder(stream);
-                recorder.start();
-                setRecording(true);
-                setMediaRecorder(recorder);
-                const chunks = [];
-                recorder.ondataavailable = (e) => chunks.push(e.data);
-                recorder.onstop = () => {
-                    const blob = new Blob(chunks, { type: 'audio/webm' });
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                        const base64data = reader.result;
-                        setMessages((prev) => [...prev, { id: Date.now(), username, room, text: '', audio: URL.createObjectURL(blob), timestamp: new Date().toLocaleTimeString(), seen: false }]);
-                        socketRef.current.emit('file', { username, room, file: base64data, type: 'audio', name: 'voice-note.webm' });
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const recorder = new MediaRecorder(stream);
+                    recorder.start();
+                    setRecording(true);
+                    setMediaRecorder(recorder);
+                    const chunks = [];
+                    recorder.ondataavailable = (e) => chunks.push(e.data);
+                    recorder.onstop = () => {
+                        const blob = new Blob(chunks, { type: 'audio/webm' });
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                            const base64data = reader.result;
+                            const voiceMessage = { 
+                                id: Date.now(), 
+                                username, 
+                                room, 
+                                text: '', 
+                                audio: URL.createObjectURL(blob), 
+                                timestamp: new Date().toLocaleTimeString(), 
+                                seen: false,
+                                type: 'audio',
+                                name: 'voice-note.webm'
+                            };
+                            setMessages((prev) => [...prev, voiceMessage]);
+                            console.log('Sending voice message:', { username, room, type: 'audio', name: 'voice-note.webm' });
+                            socketRef.current.emit('file', { username, room, file: base64data, type: 'audio', name: 'voice-note.webm' });
+                        };
+                        reader.readAsDataURL(blob);
+                        stream.getTracks().forEach(track => track.stop());
                     };
-                    reader.readAsDataURL(blob);
-                    stream.getTracks().forEach(track => track.stop());
-                };
+                } catch (error) {
+                    console.error('Error starting recording:', error);
+                    alert('Error accessing microphone. Please check permissions.');
+                }
             };
 
             const stopRecording = () => {
@@ -456,15 +487,38 @@
             const handleFileUpload = (e) => {
                 const file = e.target.files[0];
                 if (file) {
+                    // Check file size (limit to 10MB)
+                    if (file.size > 10 * 1024 * 1024) {
+                        alert('File size too large. Please select a file smaller than 10MB.');
+                        return;
+                    }
+                    
                     const reader = new FileReader();
                     reader.onload = (event) => {
                         const url = event.target.result;
                         const type = file.type.startsWith('image') ? 'image' : file.type.startsWith('video') ? 'video' : 'document';
-                        setMessages((prev) => [...prev, { id: Date.now(), username, room, text: '', file: url, type, name: file.name, timestamp: new Date().toLocaleTimeString(), seen: false }]);
+                        const fileMessage = { 
+                            id: Date.now(), 
+                            username, 
+                            room, 
+                            text: '', 
+                            file: url, 
+                            type, 
+                            name: file.name, 
+                            timestamp: new Date().toLocaleTimeString(), 
+                            seen: false 
+                        };
+                        setMessages((prev) => [...prev, fileMessage]);
+                        console.log('Sending file:', { username, room, type, name: file.name, size: file.size });
                         socketRef.current.emit('file', { username, room, file: event.target.result, type, name: file.name });
+                    };
+                    reader.onerror = () => {
+                        alert('Error reading file. Please try again.');
                     };
                     reader.readAsDataURL(file);
                 }
+                // Reset the input so the same file can be selected again
+                e.target.value = '';
             };
 
             const startCall = async (type) => {
@@ -712,6 +766,19 @@
                                 <button onClick={() => askAI(prompt('Ask AI:'))} className="w-full bg-yellow-500 text-white p-2 rounded hover:bg-yellow-600 transition dramatic-text">Ask AI</button>
                                 <p className="text-sm text-gray-400 mt-2 dramatic-text">{aiResponse}</p>
                             </div>
+                            <div className="mt-4 text-white">
+                                <h3 className="dramatic-text text-lg font-semibold mb-2">Debug Info</h3>
+                                <p className="text-sm">Room: {room}</p>
+                                <p className="text-sm">Private User: {privateUser || 'None'}</p>
+                                <p className="text-sm">Messages Count: {messages.length}</p>
+                                <p className="text-sm">File Messages: {messages.filter(m => m.file || m.audio).length}</p>
+                                <button onClick={() => console.log('Messages:', messages)} className="text-xs bg-gray-700 p-1 rounded mt-1 dramatic-text">Log Messages</button>
+                                <button onClick={() => {
+                                    const testFile = { username, room, file: 'data:text/plain;base64,dGVzdCBmaWxl', type: 'document', name: 'test.txt' };
+                                    console.log('Sending test file:', testFile);
+                                    socketRef.current.emit('file', testFile);
+                                }} className="text-xs bg-blue-700 p-1 rounded mt-1 dramatic-text ml-1">Test File Send</button>
+                            </div>
                         </div>
                         <div className={`main-content p-4 rounded-lg shadow ${chatTheme === 'dark' ? 'chat-theme-dark' : chatTheme === 'light' ? 'chat-theme-light' : 'chat-theme-default'}`}>
                             <div className="flex justify-between items-center mb-2">
@@ -736,9 +803,10 @@
                                                 <strong className={`${chatTheme === 'light' ? 'text-gray-800' : 'text-white'} dramatic-text`}>{msg.username} <span className={badge === 'Chat Master' ? 'badge' : ''}>{badge}</span></strong> <span className="text-gray-500 text-sm">({msg.timestamp})</span>{msg.seen ? ' ✓✓' : ' ✓'}: 
                                                 {msg.text ? <div dangerouslySetInnerHTML={{ __html: msg.text }} className={`${chatTheme === 'light' ? 'text-gray-800' : 'text-white'} dramatic-text`} /> : null}
                                                 {msg.audio ? <audio controls src={msg.audio} /> : null}
-                                                {msg.type === 'image' ? <img src={msg.file} alt="image" className="media-preview" /> : null}
-                                                {msg.type === 'video' ? <video controls src={msg.file} className="media-preview" /> : null}
-                                                {msg.type === 'document' ? <a href={msg.file} download={msg.name} className="text-blue-400">Download {msg.name}</a> : null}
+                                                {msg.file && msg.type === 'audio' ? <audio controls src={msg.file} /> : null}
+                                                {msg.file && msg.type === 'image' ? <img src={msg.file} alt="image" className="media-preview" /> : null}
+                                                {msg.file && msg.type === 'video' ? <video controls src={msg.file} className="media-preview" /> : null}
+                                                {msg.file && msg.type === 'document' ? <a href={msg.file} download={msg.name} className="text-blue-400">Download {msg.name}</a> : null}
                                                 {msg.reactions ? msg.reactions.map((r, i) => <span key={i} className="reaction">{r}</span>) : null}
                                                 <span onClick={() => addReaction(index, '❤️')} className="reaction">❤️</span>
                                                 <span onClick={() => addReaction(index, '👍')} className="reaction">👍</span>
@@ -801,7 +869,6 @@
     </script>
 </body>
 </html>
-
 
 
 
