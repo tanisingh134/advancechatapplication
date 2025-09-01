@@ -230,7 +230,7 @@
                 const urlParams = new URLSearchParams(window.location.search);
                 const invite = urlParams.get('invite');
                 
-                socketRef.current = io('http://localhost:3000', { withCredentials: true });
+                socketRef.current = io('https://advancechatapplication.onrender.com/', { withCredentials: true });
 
                 socketRef.current.on('connect', () => {
                     console.log('Connected to server');
@@ -294,7 +294,7 @@
             useEffect(() => {
                 if (isAuthenticated && username) {
                     // Generate invite link using username instead of socket ID
-                    const newInviteLink = `http://localhost:3000/index.html?invite=${username}`;
+                    const newInviteLink = `https://advancechatapplication.onrender.com/?invite=${username}`;
                     setInviteLink(newInviteLink);
                     if (qrRef.current && typeof QRCode !== 'undefined') {
                         qrRef.current.innerHTML = '';
@@ -801,6 +801,7 @@
     </script>
 </body>
 </html>
+
 
 
 
