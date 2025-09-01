@@ -11,7 +11,9 @@ const io = new Server(server, {
         methods: ['GET', 'POST'],
         credentials: true,
     },
-    maxHttpBufferSize: 1e8
+    maxHttpBufferSize: 1e9, // Increased to 1GB for larger files
+    pingTimeout: 60000,
+    pingInterval: 25000
 });
 
 app.use(cors());
@@ -210,12 +212,27 @@ io.on('connection', (socket) => {
     });
 
     socket.on('file', ({ username, room, file, type, name }) => {
-        const targetSocketId = users.get(room.split('-')[2]);
-        if (targetSocketId) {
-            io.to(targetSocketId).emit('file', { username, room, file, type, name, timestamp: new Date().toLocaleTimeString(), seen: false });
-            io.to(users.get(username)).emit('file', { username, room, file, type, name, timestamp: new Date().toLocaleTimeString(), seen: false });
-        } else {
-            io.to(room).emit('file', { username, room, file, type, name, timestamp: new Date().toLocaleTimeString(), seen: false });
+        try {
+            console.log(`File received from ${username} in room ${room}:`, { type, name, fileSize: file ? file.length : 0 });
+            
+            if (!username || !room || !file || !type || !name) {
+                console.error('Missing required file data:', { username, room, file: !!file, type, name });
+                return;
+            }
+            
+            // Handle file sharing for both private and public rooms
+            if (room.startsWith('private-')) {
+                // For private rooms, send to all users in the private room
+                console.log(`Broadcasting file to private room: ${room}`);
+                io.to(room).emit('file', { username, room, file, type, name, timestamp: new Date().toLocaleTimeString(), seen: false });
+            } else {
+                // For public rooms, send to all users in the room
+                console.log(`Broadcasting file to public room: ${room}`);
+                io.to(room).emit('file', { username, room, file, type, name, timestamp: new Date().toLocaleTimeString(), seen: false });
+            }
+        } catch (error) {
+            console.error('Error handling file:', error);
+            socket.emit('error', 'Failed to process file');
         }
     });
 
@@ -277,7 +294,4 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
-
-
-
 
