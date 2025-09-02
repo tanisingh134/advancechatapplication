@@ -365,7 +365,8 @@
                     const elapsedTime = (endTime - typingChallengeStartTime.current) / 1000;
                     const words = typingChallengeText.split(' ').length;
                     const wpm = Math.round((words / elapsedTime) * 60);
-                    setTypingChallengeResult(`🎉 You typed at ${wpm} WPM!`);
+                    const seconds = Math.round(elapsedTime * 10) / 10;
+                    setTypingChallengeResult(`🎉 Completed in ${seconds}s at ${wpm} WPM!`);
                     setTypingChallengeActive(false);
                 }
             };
@@ -466,7 +467,6 @@
                                 type: 'audio',
                                 name: 'voice-note.webm'
                             };
-                            setMessages((prev) => [...prev, voiceMessage]);
                             console.log('Sending voice message:', { username, room, type: 'audio', name: 'voice-note.webm' });
                             socketRef.current.emit('file', { username, room, file: base64data, type: 'audio', name: 'voice-note.webm' });
                         };
@@ -508,7 +508,6 @@
                             timestamp: new Date().toLocaleTimeString(), 
                             seen: false 
                         };
-                        setMessages((prev) => [...prev, fileMessage]);
                         console.log('Sending file:', { username, room, type, name: file.name, size: file.size });
                         socketRef.current.emit('file', { username, room, file: event.target.result, type, name: file.name });
                     };
@@ -658,7 +657,7 @@
             return (
                 <div className="container mx-auto p-4">
                     <div className="flex justify-between items-center mb-4">
-                        <h1 className="dramatic-text text-4xl font-bold text-white">Interactive Friends Chat</h1>
+                        <h1 className="dramatic-text text-4xl font-bold text-white">Interactive Chat Application</h1>
                         <div>
                             <button onClick={toggleTheme} className="p-2 bg-gray-700 rounded mr-2 transition icon-btn text-2xl">
                                 {theme === 'light' ? '🌙' : '☀️'}
@@ -705,7 +704,7 @@
                             <h2 className="dramatic-text text-xl font-semibold mt-4 mb-2 text-white">Friends</h2>
                             <input
                                 type="text"
-                                placeholder="Friend's number or link"
+                                placeholder="Friend's name or link"
                                 value={friendNumber}
                                 onChange={(e) => setFriendNumber(e.target.value)}
                                 className="w-full p-2 border rounded mb-2 bg-gray-700 text-white transition text-lg"
